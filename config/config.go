@@ -306,6 +306,8 @@ type Inc struct {
 	EnableForeignKey       bool `toml:"enable_foreign_key" json:"enable_foreign_key"`
 	EnableIdentiferKeyword bool `toml:"enable_identifer_keyword" json:"enable_identifer_keyword"`
 	EnableJsonType         bool `toml:"enable_json_type" json:"enable_json_type"`
+	// 是否允许指定存储引擎
+	EnableSetEngine        bool `toml:"enable_set_engine" json:"enable_set_engine"`
 	EnableNotInnodb        bool `toml:"enable_not_innodb" json:"enable_not_innodb"`
 	EnableNullable         bool `toml:"enable_nullable" json:"enable_nullable"` // 允许空列
 	EnableOrderByRand      bool `toml:"enable_orderby_rand" json:"enable_orderby_rand"`

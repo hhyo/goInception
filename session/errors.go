@@ -177,6 +177,7 @@ const (
 	ER_WRONG_TABLE_NAME
 	ER_CANT_SET_CHARSET
 	ER_CANT_SET_COLLATION
+	ER_CANT_SET_ENGINE
 	ER_MUST_AT_LEAST_ONE_COLUMN
 	ER_MUST_HAVE_COLUMNS
 	ER_PRIMARY_CANT_HAVE_NULL
@@ -339,6 +340,7 @@ var ErrorsDefault = map[int]string{
 	ER_WRONG_TABLE_NAME:                    "Incorrect table name '%-.100s'",
 	ER_CANT_SET_CHARSET:                    "Cannot set charset '%s'",
 	ER_CANT_SET_COLLATION:                  "Cannot set collation '%s'",
+	ER_CANT_SET_ENGINE:                     "Cannot set engine '%s'",
 	ER_MUST_AT_LEAST_ONE_COLUMN:            "A table must have at least 1 column.",
 	ER_MUST_HAVE_COLUMNS:                   "Must have the specified column: '%s'.",
 	ER_PRIMARY_CANT_HAVE_NULL:              "All parts of a PRIMARY KEY must be NOT NULL; if you need NULL in a key, use UNIQUE instead",
@@ -500,6 +502,7 @@ var ErrorsChinese = map[int]string{
 	ER_WRONG_TABLE_NAME:                    "不正确的表名: '%-.100s'",
 	ER_CANT_SET_CHARSET:                    "禁止指定字符集: '%s'",
 	ER_CANT_SET_COLLATION:                  "禁止指定排序规则: '%s'",
+	ER_CANT_SET_ENGINE:                     "表 '%s' 禁止指定存储引擎!",
 	ER_MUST_AT_LEAST_ONE_COLUMN:            "表至少需要有一个列.",
 	ER_MUST_HAVE_COLUMNS:                   "表必须包含以下列: '%s'.",
 	ER_PRIMARY_CANT_HAVE_NULL:              "主键的所有列必须为NOT NULL,如需要NULL列,请改用唯一索引",
@@ -562,6 +565,7 @@ func GetErrorLevel(errorNo int) uint8 {
 		ER_INVALID_IDENT,
 		ER_CANT_SET_CHARSET,
 		ER_CANT_SET_COLLATION,
+		ER_CANT_SET_ENGINE,
 		ErrNotFoundTableInfo,
 		ErrNotFoundThreadId,
 		ER_MUST_HAVE_COLUMNS,

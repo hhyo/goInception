@@ -253,6 +253,7 @@ ignore-error = false
 
 enable_nullable = true
 enable_drop_table = false
+enable_set_engine = true
 
 check_timestamp_count = true
 check_table_comment = false

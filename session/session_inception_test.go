@@ -470,6 +470,7 @@ func (s *testSessionIncSuite) TestCreateTable(c *C) {
 	config.GetGlobalConfig().Inc.CheckColumnDefaultValue = false
 
 	// 支持innodb引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
 	res = makeSQL(tk, "create table t1(c1 varchar(10))engine = innodb;")
 	row = res.Rows()[1]
 	c.Assert(row[2], Equals, "0")
@@ -805,6 +806,19 @@ primary key(id)) comment 'test';`
 	sql = `create table t1(c1 int auto_increment primary key,c2 int);`
 	s.testErrorCode(c, sql,
 		session.NewErr(session.ER_AUTO_INCR_ID_WARNING, "c1"))
+
+	// 禁止设置存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = false
+	res = makeSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10))engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "1")
+	c.Assert(row[4], Equals, "Cannot set engine 't1'")
+
+	// 允许设置存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
+	res = makeSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10))engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "0")
 
 }
 
@@ -1191,6 +1205,27 @@ func (s *testSessionIncSuite) TestAlterTableDropColumn(c *C) {
 		session.NewErr(session.ErrCantRemoveAllFields))
 }
 
+func (s *testSessionIncSuite) TestAlterTableChangeEngine(c *C) {
+	tk := testkit.NewTestKitWithInit(c, s.store)
+	saved := config.GetGlobalConfig().Inc
+	defer func() {
+		config.GetGlobalConfig().Inc = saved
+	}()
+
+	// 修改存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = false
+	res := makeSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10));alter table t1 engine = innodb;")
+	row := res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "1")
+	c.Assert(row[4], Equals, "Cannot set engine 't1'")
+
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
+	res = makeSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10));alter table t1 engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "0")
+
+}
+
 func (s *testSessionIncSuite) TestInsert(c *C) {
 	tk := testkit.NewTestKitWithInit(c, s.store)
 	saved := config.GetGlobalConfig().Inc
@@ -1400,6 +1435,7 @@ func (s *testSessionIncSuite) TestUpdate(c *C) {
 	}()
 
 	config.GetGlobalConfig().Inc.CheckInsertField = false
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
 
 	// 表不存在
 	sql = "update t1 set c1 = 1;"

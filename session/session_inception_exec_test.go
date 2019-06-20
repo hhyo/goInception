@@ -335,6 +335,7 @@ func (s *testSessionIncExecSuite) TestCreateTable(c *C) {
 	config.GetGlobalConfig().Inc.CheckColumnDefaultValue = false
 
 	// 支持innodb引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
 	res = makeExecSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10))engine = innodb;")
 	row = res.Rows()[int(tk.Se.AffectedRows())-1]
 	c.Assert(row[2], Equals, "0")
@@ -343,6 +344,19 @@ func (s *testSessionIncExecSuite) TestCreateTable(c *C) {
 	row = res.Rows()[int(tk.Se.AffectedRows())-1]
 	c.Assert(row[2], Equals, "2")
 	c.Assert(row[4], Equals, "Set engine to innodb for table 't1'.")
+
+	// 禁止设置存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = false
+	res = makeExecSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10))engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "1")
+	c.Assert(row[4], Equals, "Cannot set engine 't1'")
+
+	// 允许设置存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
+	res = makeExecSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10))engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "0")
 
 	// 时间戳 timestamp默认值
 	sql = "drop table if exists t1;create table t1(id int primary key,t1 timestamp default CURRENT_TIMESTAMP,t2 timestamp default CURRENT_TIMESTAMP);"
@@ -904,6 +918,27 @@ func (s *testSessionIncExecSuite) TestAlterTableDropColumn(c *C) {
 	sql = "drop table if exists t1;create table t1(id int null);alter table t1 drop id;"
 	s.testErrorCode(c, sql,
 		session.NewErr(session.ErrCantRemoveAllFields))
+}
+
+func (s *testSessionIncExecSuite) TestAlterTableChangeEngine(c *C) {
+	tk := testkit.NewTestKitWithInit(c, s.store)
+	saved := config.GetGlobalConfig().Inc
+	defer func() {
+		config.GetGlobalConfig().Inc = saved
+	}()
+
+	// 修改存储引擎
+	config.GetGlobalConfig().Inc.EnableSetEngine = false
+	res := makeExecSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10));alter table t1 engine = innodb;")
+	row := res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "1")
+	c.Assert(row[4], Equals, "Cannot set engine 't1'")
+
+	config.GetGlobalConfig().Inc.EnableSetEngine = true
+	res = makeExecSQL(tk, "drop table if exists t1;create table t1(c1 varchar(10));alter table t1 engine = innodb;")
+	row = res.Rows()[int(tk.Se.AffectedRows())-1]
+	c.Assert(row[2], Equals, "0")
+
 }
 
 func (s *testSessionIncExecSuite) TestInsert(c *C) {

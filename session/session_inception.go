@@ -2504,8 +2504,14 @@ func (s *session) checkCreateTable(node *ast.CreateTableStmt, sql string) {
 			for _, opt := range node.Options {
 				switch opt.Tp {
 				case ast.TableOptionEngine:
-					if !strings.EqualFold(opt.StrValue, "innodb") {
-						s.AppendErrorNo(ER_TABLE_MUST_INNODB, node.Table.Name.O)
+					if opt.StrValue != "" {
+						if s.Inc.EnableSetEngine {
+							if !strings.EqualFold(opt.StrValue, "innodb") {
+								s.AppendErrorNo(ER_TABLE_MUST_INNODB, node.Table.Name.O)
+							}
+						} else {
+							s.AppendErrorNo(ER_CANT_SET_ENGINE, node.Table.Name.O)
+						}
 					}
 				case ast.TableOptionCharset:
 					if s.Inc.EnableSetCharset {
@@ -2732,8 +2738,14 @@ func (s *session) checkTableOptions(options []*ast.TableOption, table string, is
 	for _, opt := range options {
 		switch opt.Tp {
 		case ast.TableOptionEngine:
-			if !strings.EqualFold(opt.StrValue, "innodb") {
-				s.AppendErrorNo(ER_TABLE_MUST_INNODB, table)
+			if opt.StrValue != "" {
+				if s.Inc.EnableSetEngine {
+					if !strings.EqualFold(opt.StrValue, "innodb") {
+						s.AppendErrorNo(ER_TABLE_MUST_INNODB, table)
+					}
+				} else {
+					s.AppendErrorNo(ER_CANT_SET_ENGINE, table)
+				}
 			}
 		case ast.TableOptionCharset:
 			if s.Inc.EnableSetCharset {
@@ -5845,6 +5857,11 @@ func (s *session) checkInceptionVariables(number int) bool {
 		return s.Inc.CheckColumnPositionChange
 		/*case ER_NULL_NAME_FOR_INDEX:
 		  return s.Inc.EnableNullIndexName*/
+
+	case ER_CANT_SET_ENGINE:
+		if s.Inc.EnableSetEngine {
+			return false
+		}
 	}
 
 	return true
