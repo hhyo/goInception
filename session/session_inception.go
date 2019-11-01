@@ -196,6 +196,9 @@ type TableInfo struct {
 	// 索引
 	Indexes []*IndexInfo
 
+	// Option
+	Options *OptionInfo
+
 	// 是否已删除
 	IsDeleted bool
 	// 备份库是否已创建
@@ -231,6 +234,18 @@ type IndexInfo struct {
 	IndexType  string `gorm:"Column:Index_type"`
 
 	IsDeleted bool `gorm:"-"`
+}
+
+
+
+// TableOption Option信息
+type OptionInfo struct {
+
+	Engine      string
+	Charset  	string
+	Collate		string
+	Comment     string
+	AutoIncID	int64
 }
 
 var (
@@ -3172,8 +3187,9 @@ func (s *session) checkCreateTable(node *ast.CreateTableStmt, sql string) {
 }
 
 // checkTableOptions 审核表选项
-func (s *session) checkTableOptions(options []*ast.TableOption, table string, isCreate bool) {
-	for _, opt := range options {
+func (s *session) checkTableOptions(t *TableInfo, c *ast.AlterTableSpec, isCreate bool) {
+	table := t.Name
+	for _, opt := range c.Options {
 		switch opt.Tp {
 		case ast.TableOptionEngine:
 			if s.Inc.EnableSetEngine {
@@ -3205,6 +3221,11 @@ func (s *session) checkTableOptions(options []*ast.TableOption, table string, is
 		default:
 			s.AppendErrorNo(ER_NOT_SUPPORTED_ALTER_OPTION)
 		}
+	}
+
+	if s.opt.execute && !isCreate {
+		// 生成回滚语句
+		s.mysqlAlterTableOptionRollback(t,c)
 	}
 }
 
@@ -3357,7 +3378,7 @@ func (s *session) checkAlterTable(node *ast.AlterTableStmt, sql string) {
 			if len(alter.Options) == 0 {
 				s.AppendErrorNo(ER_NOT_SUPPORTED_YET)
 			}
-			s.checkTableOptions(alter.Options, node.Table.Name.String(), false)
+			s.checkTableOptions(table, alter, false)
 		case ast.AlterTableAddColumns:
 			s.checkAddColumn(table, alter)
 		case ast.AlterTableDropColumn:
@@ -4526,6 +4547,48 @@ func (s *session) mysqlDropColumnRollback(field FieldInfo) {
 	// s.myRecord.DDLRollback += buf.String()
 	s.alterRollbackBuffer = append(s.alterRollbackBuffer, buf.String())
 }
+
+
+func (s *session) mysqlAlterTableOptionRollback(t *TableInfo, c *ast.AlterTableSpec) {
+	if s.opt.check {
+		return
+	}
+
+	// 复制表，替换Option信息
+	table :=s.copyTableInfo(t)
+
+	for _, opt := range c.Options {
+		switch opt.Tp {
+		case ast.TableOptionEngine:
+			table.Options.Engine = opt.StrValue
+			s.alterRollbackBuffer = append(s.alterRollbackBuffer,
+				fmt.Sprintf(" ENGINE=%s ", s.myRecord.TableInfo.Options.Engine))
+		case ast.TableOptionCharset:
+			table.Options.Charset = opt.StrValue
+			s.alterRollbackBuffer = append(s.alterRollbackBuffer,
+				fmt.Sprintf(" DEFAULT CHARSET='%s' ", s.myRecord.TableInfo.Options.Charset))
+		case ast.TableOptionCollate:
+			table.Options.Collate = opt.StrValue
+			s.alterRollbackBuffer = append(s.alterRollbackBuffer,
+				fmt.Sprintf(" DEFAULT COLLATE='%s' ", s.myRecord.TableInfo.Options.Collate))
+		case ast.TableOptionComment:
+			table.Options.Comment = opt.StrValue
+			s.alterRollbackBuffer = append(s.alterRollbackBuffer,
+				fmt.Sprintf(" COMMENT='%s'", s.myRecord.TableInfo.Options.Comment))
+		case ast.TableOptionAutoIncrement:
+			table.Options.AutoIncID = int64(opt.UintValue)
+			s.alterRollbackBuffer = append(s.alterRollbackBuffer,
+				fmt.Sprintf(" AUTO_INCREMENT=%d ", s.myRecord.TableInfo.Options.AutoIncID))
+		default:
+			s.AppendErrorNo(ER_NOT_SUPPORTED_ALTER_OPTION)
+		}
+	}
+
+	// 更新表缓存，用户下个语句对比
+	s.cacheNewTable(table)
+	s.myRecord.TableInfo = table
+}
+
 
 func (s *session) checkDropIndex(node *ast.DropIndexStmt, sql string) {
 	log.Debug("checkDropIndex")
@@ -6885,6 +6948,63 @@ func (s *session) QueryIndexFromDB(db string, tableName string, reportNotExists 
 	return rows
 }
 
+func (s *session) QueryTableOptionFromDB(db string, tableName string, reportNotExists bool) *OptionInfo {
+	if db == "" {
+		db = s.DBName
+	}
+
+	var res string
+	sql := fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`;", db, tableName)
+
+	rows, err := s.Raw(sql)
+	if rows != nil {
+		defer rows.Close()
+	}
+	if err != nil {
+		if myErr, ok := err.(*mysqlDriver.MySQLError); ok {
+			if myErr.Number != 1146 {
+				// log.Error(err)
+				log.Errorf("con:%d %v", s.sessionVars.ConnectionID, err)
+				s.AppendErrorMessage(myErr.Message + ".")
+			} else if reportNotExists {
+				s.AppendErrorMessage(myErr.Message + ".")
+			}
+
+		} else {
+			s.AppendErrorMessage(err.Error() + ".")
+		}
+		return nil
+	}
+
+	for rows.Next() {
+		rows.Scan(&res, &res)
+	}
+
+	charsetInfo, collation := s.sessionVars.GetCharsetInfo()
+	stmtNodes, _, err := s.parser.Parse(res, charsetInfo, collation)
+	if err != nil {
+		return nil
+	}
+
+	OpInfo := &OptionInfo{}
+	stmtNode := stmtNodes[0]
+	for _, op := range stmtNode.(*ast.CreateTableStmt).Options {
+		switch op.Tp {
+		case ast.TableOptionEngine:
+			OpInfo.Engine = op.StrValue
+		case ast.TableOptionCharset:
+			OpInfo.Charset = op.StrValue
+		case ast.TableOptionCollate:
+			OpInfo.Collate = op.StrValue
+		case ast.TableOptionComment:
+			OpInfo.Comment = op.StrValue
+		case ast.TableOptionAutoIncrement:
+			OpInfo.AutoIncID = int64(op.UintValue)
+		}
+	}
+	return OpInfo
+}
+
 func (r *Record) AppendErrorMessage(msg string) {
 	r.ErrLevel = 2
 
@@ -7188,6 +7308,9 @@ func (s *session) getTableFromCache(db string, tableName string, reportNotExists
 			if rows := s.QueryIndexFromDB(db, tableName, reportNotExists); rows != nil {
 				newT.Indexes = rows
 			}
+			if OpInfo := s.QueryTableOptionFromDB(db, tableName, reportNotExists); OpInfo != nil {
+				newT.Options = OpInfo
+			}
 			s.tableCacheList[key] = newT
 
 			return newT
@@ -7313,6 +7436,8 @@ func (s *session) copyTableInfo(t *TableInfo) *TableInfo {
 	p.Name = t.Name
 	p.AsName = t.AsName
 	p.AlterCount = t.AlterCount
+	p.Options = &OptionInfo{}
+	*p.Options = *t.Options
 
 	p.Fields = make([]FieldInfo, len(t.Fields))
 	copy(p.Fields, t.Fields)
