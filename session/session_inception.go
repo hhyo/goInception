@@ -1539,7 +1539,8 @@ func (s *session) mysqlCreateSqlFromTableInfo(dbname string, ti *TableInfo) stri
 
 	buf.WriteString("id bigint auto_increment primary key, ")
 	buf.WriteString("rollback_statement mediumtext, ")
-	buf.WriteString("opid_time varchar(50)")
+	buf.WriteString("opid_time varchar(50), ")
+	buf.WriteString("KEY `idx_opid_time` (`opid_time`)")
 
 	buf.WriteString(") ENGINE INNODB DEFAULT CHARSET UTF8MB4;")
 
